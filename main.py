@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import requests
 import typer
-from rich import print
+from rich import print, print_json
+from rich.console import Console
+from rich.table import Table
 from typing_extensions import Annotated
 
 from tasty_api import errors
@@ -72,6 +75,28 @@ def main(
     customer = Customer(trading_session)
     customer.sync()
 
+    # Print out a table of accounts, balances, and positions
+    console = Console()
+    table = Table(title="Accounts")
+    table.add_column("Account Number", justify="left", style="cyan")
+    table.add_column("Account Type", justify="left", style="magenta")
+    table.add_column("Cash Balance", justify="right", style="green")
+    table.add_column("Account Restrictions", justify="left", style="blue")
+    table.add_column("Positions", justify="right", style="yellow")
+    for account in customer.accounts:
+        # Get the balance and positions for each account
+        table.add_row(
+            account.account_number,
+            account.account_type,
+            str(account.cash_balance),
+            ""
+            + ("Closed" if account.closed else "")
+            + (",Frozen" if account.frozen else "")
+            + (",Closing Only" if account.is_closing_only else ""),
+            str(account.positions),
+        )
+    console.print(table)
+
     if logout:
         print("Logging out...")
         try:
@@ -81,41 +106,44 @@ def main(
             print(f"Error logging out: {e}")
         return
 
-    # Get me as a person
+    # Fetch the SPY and TSLA equities
+    auth_header = {"Authorization": trading_session.session_id}
     # response = requests.get(
-    #     f"{url}/customers/me",
-    #     headers=header,
+    #     f"{url}/instruments/equities",
+    #     params={"symbol[]": ["SPY", "TSLA"]},
+    #     headers=auth_header,
     # )
-    # pprint(response.json())
+    # if response.status_code != 200:
+    #     error_code = response.status_code
+    #     error_message = response.json()["error"]["message"]
+    #     raise errors.translate_error_code(error_code, error_message)
+    # print_json(data=response.json())
 
-    # # Get my accounts
+    # Print specifically the SPY equity and info
+    response = requests.get(
+        f"{url}/market-data/",
+        params={"symbol": "SPY", "instrumentType": "Equity"},
+        headers=auth_header,
+    )
+    if response.status_code != 200:
+        error_code = response.status_code
+        error_message = response.json()["error"]["message"]
+        raise errors.translate_error_code(error_code, error_message)
+    print_json(data=response.json())
+
+    # Next, look for options equities
+
+    # Get the market data for SPY and TSLA - Doesn't work yet
     # response = requests.get(
-    #     f"{url}/customers/me/accounts",
-    #     headers=header,
+    #     f"{url}/market-data/by-type",
+    #     params={"equity[]": ["SPY"]},
+    #     headers=auth_header,
     # )
-    # pprint(response.json())
-
-    # # Retrieve my account number and get the account details
-    # account_number = response.json()["data"]["items"][0]["account"]["account-number"]
-    # response = requests.get(
-    #     f"{url}/customers/me/accounts/{account_number}",
-    #     headers=header,
-    # )
-    # pprint(response.json())
-
-    # # Print my balance
-    # response = requests.get(
-    #     f"{url}/accounts/{account_number}/balances",
-    #     headers=header,
-    # )
-    # print(response.status_code)
-    # pprint(response.json())
-
-    # Destroy a session
-    # response = requests.delete(
-    #     f"{url}/sessions",
-    #     json={"Authorization": "session_token"},
-    # )
+    # if response.status_code != 200:
+    #     error_code = response.status_code
+    #     error_message = response.json()["error"]["message"]
+    #     raise errors.translate_error_code(error_code, error_message)
+    # print_json(data=response.json())
 
 
 if __name__ == "__main__":
